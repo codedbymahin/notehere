@@ -178,9 +178,7 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            _isEditing
-                                ? 'Update your note'
-                                : 'Start writing',
+                            _isEditing ? 'Update your note' : 'Start writing',
                             style: theme.textTheme.titleMedium?.copyWith(
                               color: colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w500,
@@ -207,7 +205,8 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
                         maxLength: _titleMaxLength,
                         textInputAction: TextInputAction.next,
                         textCapitalization: TextCapitalization.sentences,
-                        onFieldSubmitted: (_) => _descriptionFocus.requestFocus(),
+                        onFieldSubmitted: (_) =>
+                            _descriptionFocus.requestFocus(),
                         style: theme.textTheme.titleLarge?.copyWith(
                           fontWeight: FontWeight.w700,
                         ),
@@ -252,9 +251,7 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
                                 ),
                               )
                             : const Icon(Icons.check),
-                        label: Text(
-                          _isEditing ? 'Update note' : 'Save note',
-                        ),
+                        label: Text(_isEditing ? 'Update note' : 'Save note'),
                         style: FilledButton.styleFrom(
                           minimumSize: const Size.fromHeight(64),
                           shape: RoundedRectangleBorder(
@@ -301,10 +298,12 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
           ),
           FilledButton.tonal(
             style: FilledButton.styleFrom(
-              backgroundColor:
-                  Theme.of(dialogContext).colorScheme.errorContainer,
-              foregroundColor:
-                  Theme.of(dialogContext).colorScheme.onErrorContainer,
+              backgroundColor: Theme.of(
+                dialogContext,
+              ).colorScheme.errorContainer,
+              foregroundColor: Theme.of(
+                dialogContext,
+              ).colorScheme.onErrorContainer,
             ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Delete'),
@@ -318,9 +317,7 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
       await provider.deleteNote(widget.noteId!);
       if (!mounted) return;
       navigator.pop();
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Note deleted')),
-      );
+      messenger.showSnackBar(const SnackBar(content: Text('Note deleted')));
     } catch (_) {
       if (!mounted) return;
       messenger.showSnackBar(

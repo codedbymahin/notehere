@@ -112,8 +112,12 @@ class _NotesListScreenState extends State<NotesListScreen> {
           ),
           FilledButton.tonal(
             style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(dialogContext).colorScheme.errorContainer,
-              foregroundColor: Theme.of(dialogContext).colorScheme.onErrorContainer,
+              backgroundColor: Theme.of(
+                dialogContext,
+              ).colorScheme.errorContainer,
+              foregroundColor: Theme.of(
+                dialogContext,
+              ).colorScheme.onErrorContainer,
             ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Delete'),
@@ -140,7 +144,8 @@ class _NotesListScreenState extends State<NotesListScreen> {
                     hasScrollBody: false,
                     child: _LoadingState(),
                   )
-                else if (provider.errorMessage != null && provider.notes.isEmpty)
+                else if (provider.errorMessage != null &&
+                    provider.notes.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: EmptyStateView.error(
@@ -252,7 +257,8 @@ class _AppBarHeader extends StatelessWidget {
           tooltip: 'Sort notes',
           icon: const Icon(Icons.sort),
           initialValue: sortOrder,
-          onSelected: (order) => context.read<NoteProvider>().setSortOrder(order),
+          onSelected: (order) =>
+              context.read<NoteProvider>().setSortOrder(order),
           itemBuilder: (_) => const [
             PopupMenuItem(
               value: NoteSortOrder.newestFirst,
@@ -298,7 +304,8 @@ class _HomeHeader extends StatelessWidget {
     final textTheme = theme.textTheme;
     final greeting = DateFormatter.greetingFor();
     final now = DateTime.now();
-    final today = '${DateFormatter.weekdayLong(now)}, '
+    final today =
+        '${DateFormatter.weekdayLong(now)}, '
         '${DateFormatter.absolute(now)}';
     final totalNotes = notes.length;
     final lastUpdated = _lastUpdated(notes);

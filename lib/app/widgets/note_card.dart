@@ -85,7 +85,8 @@ class NoteCard extends StatelessWidget {
                 children: [
                   _DateChip(
                     icon: Icons.edit_calendar_outlined,
-                    label: 'Created ${DateFormatter.relativeDay(note.createdAt)}',
+                    label:
+                        'Created ${DateFormatter.relativeDay(note.createdAt)}',
                   ),
                   if (showUpdated)
                     _DateChip(

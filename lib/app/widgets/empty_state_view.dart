@@ -20,7 +20,8 @@ class EmptyStateView extends StatelessWidget {
   const EmptyStateView.noNotes({super.key, this.onAction})
     : icon = Icons.menu_book_outlined,
       title = 'No notes yet',
-      message = 'Capture your first thought and start building your '
+      message =
+          'Capture your first thought and start building your '
           'private collection.',
       actionLabel = 'Create your first note',
       isError = false;
@@ -29,20 +30,18 @@ class EmptyStateView extends StatelessWidget {
   const EmptyStateView.noResults({super.key, this.onAction})
     : icon = Icons.search_off_outlined,
       title = 'No matching notes',
-      message = 'Try a different keyword or clear the search to see '
+      message =
+          'Try a different keyword or clear the search to see '
           'every note.',
       actionLabel = 'Clear search',
       isError = false;
 
   /// Convenience constructor for the "loading failed" state.
-  const EmptyStateView.error({
-    super.key,
-    required this.message,
-    this.onAction,
-  }) : icon = Icons.cloud_off_outlined,
-       title = "We couldn't reach your notes",
-       actionLabel = 'Try again',
-       isError = true;
+  const EmptyStateView.error({super.key, required this.message, this.onAction})
+    : icon = Icons.cloud_off_outlined,
+      title = "We couldn't reach your notes",
+      actionLabel = 'Try again',
+      isError = true;
 
   final IconData icon;
   final String title;
@@ -57,9 +56,12 @@ class EmptyStateView extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final textTheme = theme.textTheme;
 
-    final accent = isError ? colorScheme.errorContainer : colorScheme.primaryContainer;
-    final onAccent =
-        isError ? colorScheme.onErrorContainer : colorScheme.onPrimaryContainer;
+    final accent = isError
+        ? colorScheme.errorContainer
+        : colorScheme.primaryContainer;
+    final onAccent = isError
+        ? colorScheme.onErrorContainer
+        : colorScheme.onPrimaryContainer;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -68,10 +70,7 @@ class EmptyStateView extends StatelessWidget {
           child: ConstrainedBox(
             constraints: BoxConstraints(minHeight: constraints.maxHeight),
             child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 24,
-                vertical: 48,
-              ),
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 48),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
