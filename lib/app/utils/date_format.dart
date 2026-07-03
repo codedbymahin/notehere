@@ -1,8 +1,8 @@
-/// Lightweight, package-free date formatting helpers shared across the UI.
+/// Package-free date formatting helpers.
 ///
-/// Kept intentionally tiny so the app stays free of `package:intl` and
-/// other transitive dependencies — most of what a notes app shows is
-/// only ever "Today", "Yesterday", or "MMM d, yyyy".
+/// We deliberately avoid the `intl` package to keep the dependency
+/// tree small. All helpers work in the device's local time zone and
+/// use a single set of English month / weekday names.
 class DateFormatter {
   DateFormatter._();
 
@@ -21,31 +21,92 @@ class DateFormatter {
     'Dec',
   ];
 
-  /// Returns `Today` / `Yesterday` / `MMM d, yyyy` (e.g. `Jul 3, 2026`).
-  static String relativeDay(DateTime date) {
-    final local = date.toLocal();
+  static const List<String> _weekdayShort = <String>[
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
+
+  static const List<String> _weekdayLong = <String>[
+    'Monday',
+    'Tuesday',
+    'Wednesday',
+    'Thursday',
+    'Friday',
+    'Saturday',
+    'Sunday',
+  ];
+
+  /// Returns a human-friendly date label.
+  ///
+  /// * Today → `Today`
+  /// * Yesterday → `Yesterday`
+  /// * Earlier this week → weekday name, e.g. `Monday`
+  /// * Same calendar year → `Jul 3`
+  /// * Different year → `Jul 3, 2024`
+  static String relativeDay(DateTime when) {
     final now = DateTime.now();
+    final date = when.toLocal();
     final today = DateTime(now.year, now.month, now.day);
-    final target = DateTime(local.year, local.month, local.day);
+    final target = DateTime(date.year, date.month, date.day);
     final diff = today.difference(target).inDays;
+
     if (diff == 0) return 'Today';
     if (diff == 1) return 'Yesterday';
-    return absolute(local);
+
+    if (diff > 1 && diff < 7) {
+      return _weekdayLong[date.weekday - 1];
+    }
+
+    if (date.year == today.year) {
+      return '${_monthNames[date.month - 1]} ${date.day}';
+    }
+
+    return '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
   }
 
-  /// Formats a date as `MMM d, yyyy`, e.g. `Jul 3, 2026`.
-  static String absolute(DateTime date) {
-    final local = date.toLocal();
-    final month = _monthNames[local.month - 1];
-    return '$month ${local.day}, ${local.year}';
+  /// Short weekday name, e.g. `Mon`. Returns the empty string if
+  /// [when] is null (defensive — callers always pass a non-null value).
+  static String weekdayShort(DateTime when) {
+    final date = when.toLocal();
+    return _weekdayShort[date.weekday - 1];
   }
 
-  /// Formats a date as `MMM d, yyyy · HH:mm` for richer contexts
-  /// like the create/update footer of a note card.
-  static String full(DateTime date) {
-    final local = date.toLocal();
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    return '${absolute(local)} · $hour:$minute';
+  /// Long weekday name, e.g. `Monday`.
+  static String weekdayLong(DateTime when) {
+    final date = when.toLocal();
+    return _weekdayLong[date.weekday - 1];
+  }
+
+  /// Absolute date — `Jul 3, 2024`.
+  static String absolute(DateTime when) {
+    final date = when.toLocal();
+    return '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
+  }
+
+  /// Date + time — `Jul 3, 2024 · 14:32`.
+  static String full(DateTime when) {
+    final date = when.toLocal();
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return '${absolute(date)} · $hour:$minute';
+  }
+
+  /// Returns a greeting appropriate for the local time of day.
+  ///
+  /// * 05:00–11:59 → `Good morning`
+  /// * 12:00–16:59 → `Good afternoon`
+  /// * 17:00–21:59 → `Good evening`
+  /// * otherwise   → `Welcome back`
+  static String greetingFor([DateTime? at]) {
+    final hour = (at ?? DateTime.now()).toLocal().hour;
+    if (hour >= 5 && hour < 12) return 'Good morning';
+    if (hour >= 12 && hour < 17) return 'Good afternoon';
+    if (hour >= 17 && hour < 22) return 'Good evening';
+    return 'Welcome back';
   }
 }

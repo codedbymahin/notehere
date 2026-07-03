@@ -4,12 +4,18 @@ import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../providers/note_provider.dart';
 import '../routes/app_routes.dart';
-import '../widgets/app_loading_indicator.dart';
+import '../utils/date_format.dart';
+import '../widgets/centered_max_width.dart';
 import '../widgets/empty_state_view.dart';
 import '../widgets/note_card.dart';
 
 /// Main screen: lists every note stored in Firestore and lets the user
 /// create, edit, delete or search for notes.
+///
+/// The screen is composed of three slivers:
+///   * a sticky AppBar (sort menu, theme-friendly title)
+///   * a custom header sliver with greeting + 3 stat tiles
+///   * the actual list (or empty state)
 class NotesListScreen extends StatefulWidget {
   const NotesListScreen({super.key});
 
@@ -46,13 +52,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
   void _showSnackBar(String message) {
     final messenger = ScaffoldMessenger.of(context);
     messenger.hideCurrentSnackBar();
-    messenger.showSnackBar(
-      SnackBar(
-        content: Text(message),
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      ),
-    );
+    messenger.showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _deleteNote(BuildContext context, Note note) async {
@@ -67,10 +67,6 @@ class _NotesListScreenState extends State<NotesListScreen> {
         ..showSnackBar(
           SnackBar(
             content: const Text('Note deleted'),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
             duration: const Duration(seconds: 4),
             action: SnackBarAction(
               label: 'Undo',
@@ -78,6 +74,7 @@ class _NotesListScreenState extends State<NotesListScreen> {
                 try {
                   await provider.restoreNote(deletedSnapshot);
                 } catch (_) {
+                  if (!mounted) return;
                   _showSnackBar(
                     provider.errorMessage ?? 'Could not restore the note.',
                   );
@@ -93,14 +90,20 @@ class _NotesListScreenState extends State<NotesListScreen> {
     }
   }
 
+  Future<void> _handleDelete(BuildContext context, Note note) async {
+    if (!await _confirmDelete(note)) return;
+    if (!context.mounted) return;
+    await _deleteNote(context, note);
+  }
+
   Future<bool> _confirmDelete(Note note) async {
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete note?'),
-        content: Text(
-          'Are you sure you want to delete "${note.title}"? '
-          'You can undo this from the snackbar.',
+        content: const Text(
+          'This note will be removed from your collection. '
+          'This action cannot be undone.',
         ),
         actions: [
           TextButton(
@@ -108,6 +111,10 @@ class _NotesListScreenState extends State<NotesListScreen> {
             child: const Text('Cancel'),
           ),
           FilledButton.tonal(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(dialogContext).colorScheme.errorContainer,
+              foregroundColor: Theme.of(dialogContext).colorScheme.onErrorContainer,
+            ),
             onPressed: () => Navigator.of(dialogContext).pop(true),
             child: const Text('Delete'),
           ),
@@ -119,8 +126,6 @@ class _NotesListScreenState extends State<NotesListScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
     return Scaffold(
       body: SafeArea(
         child: Consumer<NoteProvider>(
@@ -128,61 +133,24 @@ class _NotesListScreenState extends State<NotesListScreen> {
             return CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
-                SliverAppBar.large(
-                  centerTitle: false,
-                  pinned: true,
-                  title: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'NoteHere',
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      Text(
-                        'Your private note collection',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                  actions: [
-                    PopupMenuButton<NoteSortOrder>(
-                      tooltip: 'Sort notes',
-                      icon: const Icon(Icons.sort),
-                      initialValue: provider.sortOrder,
-                      onSelected: provider.setSortOrder,
-                      itemBuilder: (_) => const [
-                        PopupMenuItem(
-                          value: NoteSortOrder.newestFirst,
-                          child: Text('Newest first'),
-                        ),
-                        PopupMenuItem(
-                          value: NoteSortOrder.oldestFirst,
-                          child: Text('Oldest first'),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(width: 4),
-                  ],
-                ),
+                _AppBarHeader(sortOrder: provider.sortOrder),
+                _HomeHeader(notes: provider.notes),
                 if (provider.isLoading)
                   const SliverFillRemaining(
                     hasScrollBody: false,
-                    child: AppLoadingIndicator(message: 'Loading notes…'),
+                    child: _LoadingState(),
                   )
-                else if (provider.errorMessage != null &&
-                    provider.notes.isEmpty)
+                else if (provider.errorMessage != null && provider.notes.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
-                    child: _ErrorView(message: provider.errorMessage!),
+                    child: EmptyStateView.error(
+                      message: provider.errorMessage!,
+                      onAction: () => provider.clearError(),
+                    ),
                   )
                 else
-                  ..._buildContent(provider, theme),
-                const SliverPadding(padding: EdgeInsets.only(bottom: 96)),
+                  ..._buildContent(provider),
+                const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
               ],
             );
           },
@@ -196,21 +164,16 @@ class _NotesListScreenState extends State<NotesListScreen> {
     );
   }
 
-  List<Widget> _buildContent(NoteProvider provider, ThemeData theme) {
+  List<Widget> _buildContent(NoteProvider provider) {
     final visible = provider.visibleNotes;
     final hasAnyNotes = provider.notes.isNotEmpty;
     final isSearching = provider.searchQuery.trim().isNotEmpty;
 
     if (!hasAnyNotes) {
       return [
-        SliverFillRemaining(
-          hasScrollBody: false,
-          child: EmptyStateView(
-            iconData: Icons.notes_outlined,
-            title: 'No notes yet',
-            message: 'Create your first note to get started.',
-            actionLabel: 'Create your first note',
-            onAction: () => _openEditor(context),
+        SliverToBoxAdapter(
+          child: CenteredMaxWidth(
+            child: EmptyStateView.noNotes(onAction: () => _openEditor(context)),
           ),
         ),
       ];
@@ -218,53 +181,301 @@ class _NotesListScreenState extends State<NotesListScreen> {
 
     if (visible.isEmpty && isSearching) {
       return [
-        SliverToBoxAdapter(child: _SearchField(controller: _searchController)),
+        SliverToBoxAdapter(
+          child: CenteredMaxWidth(
+            child: _SearchField(controller: _searchController),
+          ),
+        ),
         SliverFillRemaining(
           hasScrollBody: false,
-          child: EmptyStateView(
-            iconData: Icons.search_off,
-            title: 'No matching notes',
-            message: 'No matching notes found.',
-            actionLabel: 'Clear search',
-            onAction: () {
-              _searchController.clear();
-              context.read<NoteProvider>().setSearchQuery('');
-            },
+          child: CenteredMaxWidth(
+            child: EmptyStateView.noResults(
+              onAction: () {
+                _searchController.clear();
+                context.read<NoteProvider>().setSearchQuery('');
+              },
+            ),
           ),
         ),
       ];
     }
 
     return [
-      SliverToBoxAdapter(child: _SearchField(controller: _searchController)),
+      SliverToBoxAdapter(
+        child: CenteredMaxWidth(
+          child: _SearchField(controller: _searchController),
+        ),
+      ),
       if (visible.isNotEmpty)
-        SliverPadding(
-          padding: const EdgeInsets.only(top: 4),
-          sliver: SliverList.builder(
-            itemCount: visible.length,
-            itemBuilder: (context, index) {
-              final note = visible[index];
-              return AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child: NoteCard(
-                  key: ValueKey(note.id),
-                  note: note,
-                  onEdit: () => _openEditor(context, noteId: note.id),
-                  onDelete: () async {
-                    if (await _confirmDelete(note)) {
-                      if (context.mounted) {
-                        await _deleteNote(context, note);
-                      }
-                    }
-                  },
-                ),
-              );
-            },
+        SliverToBoxAdapter(
+          child: CenteredMaxWidth(
+            child: Column(
+              children: [
+                const SizedBox(height: 8),
+                for (final note in visible)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 250),
+                      child: NoteCard(
+                        key: ValueKey(note.id),
+                        note: note,
+                        onEdit: () => _openEditor(context, noteId: note.id),
+                        onDelete: () => _handleDelete(context, note),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
     ];
   }
 }
+
+// ────────────────────────────────────────────────────────────────────
+// AppBar — small, pinned, hosts the sort menu.
+// ────────────────────────────────────────────────────────────────────
+
+class _AppBarHeader extends StatelessWidget {
+  const _AppBarHeader({required this.sortOrder});
+
+  final NoteSortOrder sortOrder;
+
+  @override
+  Widget build(BuildContext context) {
+    return SliverAppBar(
+      pinned: true,
+      title: const Text('NoteHere'),
+      actions: [
+        PopupMenuButton<NoteSortOrder>(
+          tooltip: 'Sort notes',
+          icon: const Icon(Icons.sort),
+          initialValue: sortOrder,
+          onSelected: (order) => context.read<NoteProvider>().setSortOrder(order),
+          itemBuilder: (_) => const [
+            PopupMenuItem(
+              value: NoteSortOrder.newestFirst,
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_downward, size: 18),
+                  SizedBox(width: 12),
+                  Text('Newest first'),
+                ],
+              ),
+            ),
+            PopupMenuItem(
+              value: NoteSortOrder.oldestFirst,
+              child: Row(
+                children: [
+                  Icon(Icons.arrow_upward, size: 18),
+                  SizedBox(width: 12),
+                  Text('Oldest first'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(width: 8),
+      ],
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Greeting header with three stat tiles.
+// ────────────────────────────────────────────────────────────────────
+
+class _HomeHeader extends StatelessWidget {
+  const _HomeHeader({required this.notes});
+
+  final List<Note> notes;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final textTheme = theme.textTheme;
+    final greeting = DateFormatter.greetingFor();
+    final now = DateTime.now();
+    final today = '${DateFormatter.weekdayLong(now)}, '
+        '${DateFormatter.absolute(now)}';
+    final totalNotes = notes.length;
+    final lastUpdated = _lastUpdated(notes);
+
+    return SliverToBoxAdapter(
+      child: CenteredMaxWidth(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 24),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              greeting,
+              style: textTheme.titleMedium?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'NoteHere',
+              style: textTheme.displaySmall?.copyWith(
+                fontWeight: FontWeight.w800,
+                height: 1.1,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Capture your thoughts before they are forgotten.',
+              style: textTheme.bodyLarge?.copyWith(
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _StatsRow(
+              tiles: [
+                _StatTile(
+                  label: 'Total notes',
+                  value: totalNotes.toString(),
+                  icon: Icons.sticky_note_2_outlined,
+                ),
+                _StatTile(
+                  label: 'Last updated',
+                  value: lastUpdated,
+                  icon: Icons.history_toggle_off_outlined,
+                ),
+                _StatTile(
+                  label: 'Today',
+                  value: today,
+                  icon: Icons.today_outlined,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _lastUpdated(List<Note> notes) {
+    if (notes.isEmpty) return '—';
+    Note? latest;
+    for (final note in notes) {
+      final ts = note.updatedAt ?? note.createdAt;
+      if (latest == null) {
+        latest = note;
+        continue;
+      }
+      final latestTs = latest.updatedAt ?? latest.createdAt;
+      if (ts.isAfter(latestTs)) latest = note;
+    }
+    if (latest == null) return '—';
+    final ts = latest.updatedAt ?? latest.createdAt;
+    return DateFormatter.relativeDay(ts);
+  }
+}
+
+class _StatsRow extends StatelessWidget {
+  const _StatsRow({required this.tiles});
+
+  final List<_StatTile> tiles;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final isWide = constraints.maxWidth >= 560;
+        if (isWide) {
+          return Row(
+            children: [
+              for (var i = 0; i < tiles.length; i++) ...[
+                if (i > 0) const SizedBox(width: 12),
+                Expanded(child: tiles[i]),
+              ],
+            ],
+          );
+        }
+        return Column(
+          children: [
+            for (var i = 0; i < tiles.length; i++) ...[
+              if (i > 0) const SizedBox(height: 10),
+              tiles[i],
+            ],
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _StatTile extends StatelessWidget {
+  const _StatTile({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerLow,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: colorScheme.outlineVariant.withValues(alpha: 0.6),
+        ),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: colorScheme.primaryContainer,
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: colorScheme.onPrimaryContainer, size: 20),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label,
+                  style: textTheme.labelMedium?.copyWith(
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  value,
+                  style: textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.w700,
+                    color: colorScheme.onSurface,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ────────────────────────────────────────────────────────────────────
+// Modern search field with rounded shape + clear button.
+// ────────────────────────────────────────────────────────────────────
 
 class _SearchField extends StatelessWidget {
   const _SearchField({required this.controller});
@@ -273,47 +484,68 @@ class _SearchField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      padding: const EdgeInsets.only(bottom: 12),
       child: TextField(
         controller: controller,
         textInputAction: TextInputAction.search,
         decoration: InputDecoration(
-          hintText: 'Search notes…',
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon: controller.text.isEmpty
-              ? null
-              : IconButton(
-                  icon: const Icon(Icons.close),
-                  tooltip: 'Clear search',
-                  onPressed: () {
-                    controller.clear();
-                    context.read<NoteProvider>().setSearchQuery('');
-                  },
-                ),
-          filled: true,
-          fillColor: theme.colorScheme.surfaceContainerHigh,
-          contentPadding: const EdgeInsets.symmetric(vertical: 0),
+          hintText: 'Search title or description…',
+          hintStyle: TextStyle(color: colorScheme.onSurfaceVariant),
+          prefixIcon: Icon(Icons.search, color: colorScheme.onSurfaceVariant),
+          suffixIcon: ValueListenableBuilder<TextEditingValue>(
+            valueListenable: controller,
+            builder: (context, value, _) {
+              if (value.text.isEmpty) return const SizedBox.shrink();
+              return IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: 'Clear search',
+                onPressed: () {
+                  controller.clear();
+                  context.read<NoteProvider>().setSearchQuery('');
+                },
+              );
+            },
+          ),
         ),
       ),
     );
   }
 }
 
-class _ErrorView extends StatelessWidget {
-  const _ErrorView({required this.message});
+// ────────────────────────────────────────────────────────────────────
+// Loading + Error states — small, calm, premium.
+// ────────────────────────────────────────────────────────────────────
 
-  final String message;
+class _LoadingState extends StatelessWidget {
+  const _LoadingState();
 
   @override
   Widget build(BuildContext context) {
-    return EmptyStateView(
-      iconData: Icons.error_outline,
-      title: 'Something went wrong',
-      message: message,
-      actionLabel: 'Dismiss',
-      onAction: () => context.read<NoteProvider>().clearError(),
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: 36,
+            height: 36,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: colorScheme.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Loading your notes…',
+            style: textTheme.bodyMedium?.copyWith(
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
