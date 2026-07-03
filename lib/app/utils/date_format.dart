@@ -21,16 +21,6 @@ class DateFormatter {
     'Dec',
   ];
 
-  static const List<String> _weekdayShort = <String>[
-    'Mon',
-    'Tue',
-    'Wed',
-    'Thu',
-    'Fri',
-    'Sat',
-    'Sun',
-  ];
-
   static const List<String> _weekdayLong = <String>[
     'Monday',
     'Tuesday',
@@ -69,13 +59,6 @@ class DateFormatter {
     return '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
   }
 
-  /// Short weekday name, e.g. `Mon`. Returns the empty string if
-  /// [when] is null (defensive — callers always pass a non-null value).
-  static String weekdayShort(DateTime when) {
-    final date = when.toLocal();
-    return _weekdayShort[date.weekday - 1];
-  }
-
   /// Long weekday name, e.g. `Monday`.
   static String weekdayLong(DateTime when) {
     final date = when.toLocal();
@@ -86,14 +69,6 @@ class DateFormatter {
   static String absolute(DateTime when) {
     final date = when.toLocal();
     return '${_monthNames[date.month - 1]} ${date.day}, ${date.year}';
-  }
-
-  /// Date + time — `Jul 3, 2024 · 14:32`.
-  static String full(DateTime when) {
-    final date = when.toLocal();
-    final hour = date.hour.toString().padLeft(2, '0');
-    final minute = date.minute.toString().padLeft(2, '0');
-    return '${absolute(date)} · $hour:$minute';
   }
 
   /// Returns a greeting appropriate for the local time of day.

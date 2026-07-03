@@ -6,6 +6,7 @@ import '../providers/note_provider.dart';
 import '../routes/app_routes.dart';
 import '../utils/date_format.dart';
 import '../widgets/centered_max_width.dart';
+import '../widgets/delete_note_dialog.dart';
 import '../widgets/empty_state_view.dart';
 import '../widgets/note_card.dart';
 
@@ -91,41 +92,13 @@ class _NotesListScreenState extends State<NotesListScreen> {
   }
 
   Future<void> _handleDelete(BuildContext context, Note note) async {
-    if (!await _confirmDelete(note)) return;
+    if (!await _confirmDelete()) return;
     if (!context.mounted) return;
     await _deleteNote(context, note);
   }
 
-  Future<bool> _confirmDelete(Note note) async {
-    final result = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete note?'),
-        content: const Text(
-          'This note will be removed from your collection. '
-          'This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.tonal(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(
-                dialogContext,
-              ).colorScheme.errorContainer,
-              foregroundColor: Theme.of(
-                dialogContext,
-              ).colorScheme.onErrorContainer,
-            ),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    return result == true;
+  Future<bool> _confirmDelete() async {
+    return showDeleteNoteDialog(context);
   }
 
   @override
@@ -220,14 +193,11 @@ class _NotesListScreenState extends State<NotesListScreen> {
                 for (final note in visible)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 250),
-                      child: NoteCard(
-                        key: ValueKey(note.id),
-                        note: note,
-                        onEdit: () => _openEditor(context, noteId: note.id),
-                        onDelete: () => _handleDelete(context, note),
-                      ),
+                    child: NoteCard(
+                      key: ValueKey(note.id),
+                      note: note,
+                      onEdit: () => _openEditor(context, noteId: note.id),
+                      onDelete: () => _handleDelete(context, note),
                     ),
                   ),
               ],

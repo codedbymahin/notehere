@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../providers/note_provider.dart';
 import '../widgets/centered_max_width.dart';
+import '../widgets/confirm_dialog.dart';
+import '../widgets/delete_note_dialog.dart';
 
 /// Screen used for both creating and editing a note.
 ///
@@ -32,6 +34,16 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
   Note? _initialNote;
   bool _isHydrating = false;
   bool _isSaving = false;
+
+  bool _hasUnsavedChanges() {
+    if (_initialNote == null) {
+      // New note: dirty as soon as either field has any text.
+      return _titleController.text.trim().isNotEmpty ||
+          _descriptionController.text.trim().isNotEmpty;
+    }
+    return _titleController.text.trim() != _initialNote!.title ||
+        _descriptionController.text.trim() != _initialNote!.description;
+  }
 
   @override
   void initState() {
@@ -125,14 +137,8 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
       }
       if (!mounted) return;
       messenger.showSnackBar(
-        SnackBar(
-          content: Text(
-            provider.lastActionMessage ??
-                (_isEditing ? 'Note updated.' : 'Note created.'),
-          ),
-        ),
+        SnackBar(content: Text(_isEditing ? 'Note updated.' : 'Note created.')),
       );
-      provider.clearLastActionMessage();
       navigator.pop();
     } catch (_) {
       if (!mounted) return;
@@ -151,167 +157,163 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Edit note' : 'New note'),
-        actions: [
-          if (_isEditing)
-            IconButton(
-              tooltip: 'Delete note',
-              icon: const Icon(Icons.delete_outline),
-              onPressed: _isSaving ? null : () => _confirmDelete(context),
-            ),
-        ],
-      ),
-      body: _isHydrating
-          ? const Center(child: CircularProgressIndicator())
-          : SafeArea(
-              child: Form(
-                key: _formKey,
-                autovalidateMode: AutovalidateMode.onUserInteraction,
-                child: ListView(
-                  padding: EdgeInsets.zero,
-                  children: [
-                    CenteredMaxWidth(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            _isEditing ? 'Update your note' : 'Start writing',
-                            style: theme.textTheme.titleMedium?.copyWith(
-                              color: colorScheme.onSurfaceVariant,
-                              fontWeight: FontWeight.w500,
+    return PopScope(
+      canPop: !(_isSaving || _hasUnsavedChanges()),
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        await _confirmDiscard(context);
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Edit note' : 'New note'),
+          actions: [
+            if (_isEditing)
+              IconButton(
+                tooltip: 'Delete note',
+                icon: const Icon(Icons.delete_outline),
+                onPressed: _isSaving ? null : () => _confirmDelete(context),
+              ),
+          ],
+        ),
+        body: _isHydrating
+            ? const Center(child: CircularProgressIndicator())
+            : SafeArea(
+                child: Form(
+                  key: _formKey,
+                  autovalidateMode: AutovalidateMode.onUserInteraction,
+                  child: ListView(
+                    padding: EdgeInsets.zero,
+                    children: [
+                      CenteredMaxWidth(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _isEditing ? 'Update your note' : 'Start writing',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: colorScheme.onSurfaceVariant,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              _isEditing
+                                  ? 'Refine the title and details below.'
+                                  : 'Capture an idea before it slips away.',
+                              style: theme.textTheme.headlineSmall?.copyWith(
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      CenteredMaxWidth(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
+                        child: TextFormField(
+                          controller: _titleController,
+                          focusNode: _titleFocus,
+                          maxLength: _titleMaxLength,
+                          textInputAction: TextInputAction.next,
+                          textCapitalization: TextCapitalization.sentences,
+                          onFieldSubmitted: (_) =>
+                              _descriptionFocus.requestFocus(),
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.w700,
+                          ),
+                          decoration: const InputDecoration(
+                            labelText: 'Title',
+                            hintText: 'Give your note a title',
+                            counterText: '',
+                          ),
+                          validator: _validateTitle,
+                        ),
+                      ),
+                      CenteredMaxWidth(
+                        padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                        child: TextFormField(
+                          controller: _descriptionController,
+                          focusNode: _descriptionFocus,
+                          maxLength: _descriptionMaxLength,
+                          maxLines: 12,
+                          minLines: 8,
+                          textCapitalization: TextCapitalization.sentences,
+                          textInputAction: TextInputAction.newline,
+                          keyboardType: TextInputType.multiline,
+                          style: theme.textTheme.bodyLarge,
+                          decoration: const InputDecoration(
+                            labelText: 'Description',
+                            hintText: 'Write your thoughts…',
+                            alignLabelWithHint: true,
+                          ),
+                          validator: _validateDescription,
+                        ),
+                      ),
+                      CenteredMaxWidth(
+                        padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
+                        child: FilledButton.icon(
+                          onPressed: _isSaving ? null : _onSave,
+                          icon: _isSaving
+                              ? const SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.check),
+                          label: Text(_isEditing ? 'Update note' : 'Save note'),
+                          style: FilledButton.styleFrom(
+                            minimumSize: const Size.fromHeight(64),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
                             ),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _isEditing
-                                ? 'Refine the title and details below.'
-                                : 'Capture an idea before it slips away.',
-                            style: theme.textTheme.headlineSmall?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              height: 1.2,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    CenteredMaxWidth(
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-                      child: TextFormField(
-                        controller: _titleController,
-                        focusNode: _titleFocus,
-                        maxLength: _titleMaxLength,
-                        textInputAction: TextInputAction.next,
-                        textCapitalization: TextCapitalization.sentences,
-                        onFieldSubmitted: (_) =>
-                            _descriptionFocus.requestFocus(),
-                        style: theme.textTheme.titleLarge?.copyWith(
-                          fontWeight: FontWeight.w700,
                         ),
-                        decoration: const InputDecoration(
-                          labelText: 'Title',
-                          hintText: 'Give your note a title',
-                          counterText: '',
-                        ),
-                        validator: _validateTitle,
                       ),
-                    ),
-                    CenteredMaxWidth(
-                      padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
-                      child: TextFormField(
-                        controller: _descriptionController,
-                        focusNode: _descriptionFocus,
-                        maxLength: _descriptionMaxLength,
-                        maxLines: 12,
-                        minLines: 8,
-                        textCapitalization: TextCapitalization.sentences,
-                        textInputAction: TextInputAction.newline,
-                        keyboardType: TextInputType.multiline,
-                        style: theme.textTheme.bodyLarge,
-                        decoration: const InputDecoration(
-                          labelText: 'Description',
-                          hintText: 'Write your thoughts…',
-                          alignLabelWithHint: true,
-                        ),
-                        validator: _validateDescription,
-                      ),
-                    ),
-                    CenteredMaxWidth(
-                      padding: const EdgeInsets.fromLTRB(20, 24, 20, 12),
-                      child: FilledButton.icon(
-                        onPressed: _isSaving ? null : _onSave,
-                        icon: _isSaving
-                            ? const SizedBox(
-                                width: 18,
-                                height: 18,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                ),
-                              )
-                            : const Icon(Icons.check),
-                        label: Text(_isEditing ? 'Update note' : 'Save note'),
-                        style: FilledButton.styleFrom(
-                          minimumSize: const Size.fromHeight(64),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
+                      CenteredMaxWidth(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
+                        child: Text(
+                          _isEditing
+                              ? 'Changes are saved instantly to the cloud.'
+                              : 'Your note will be saved instantly to the cloud.',
+                          textAlign: TextAlign.center,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: colorScheme.onSurfaceVariant,
                           ),
                         ),
                       ),
-                    ),
-                    CenteredMaxWidth(
-                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 32),
-                      child: Text(
-                        _isEditing
-                            ? 'Changes are saved instantly to the cloud.'
-                            : 'Your note will be saved instantly to the cloud.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
+      ),
     );
+  }
+
+  Future<void> _confirmDiscard(BuildContext context) async {
+    if (!_hasUnsavedChanges()) {
+      Navigator.of(context).pop();
+      return;
+    }
+    final navigator = Navigator.of(context);
+    final result = await showConfirmDialog(
+      context,
+      title: 'Discard changes?',
+      message: 'You have unsaved changes. They will be lost if you leave now.',
+    );
+    if (result == ConfirmResult.discard) {
+      navigator.pop();
+    }
   }
 
   Future<void> _confirmDelete(BuildContext context) async {
     final provider = context.read<NoteProvider>();
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete note?'),
-        content: const Text(
-          'This note will be removed from your collection. '
-          'This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton.tonal(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(
-                dialogContext,
-              ).colorScheme.errorContainer,
-              foregroundColor: Theme.of(
-                dialogContext,
-              ).colorScheme.onErrorContainer,
-            ),
-            onPressed: () => Navigator.of(dialogContext).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
+    final confirmed = await showDeleteNoteDialog(context);
+    if (!confirmed) return;
     if (!mounted) return;
     try {
       await provider.deleteNote(widget.noteId!);

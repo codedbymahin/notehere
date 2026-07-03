@@ -12,11 +12,8 @@ class FirestoreService {
 
   final FirebaseFirestore _firestore;
 
-  /// Firestore collection that stores notes.
-  static const String notesCollection = 'notes';
-
   CollectionReference<Map<String, dynamic>> get _notesRef =>
-      _firestore.collection(notesCollection);
+      _firestore.collection('notes');
 
   /// Real-time stream of every note, newest first.
   ///
@@ -27,14 +24,6 @@ class FirestoreService {
         .orderBy('createdAt', descending: true)
         .snapshots()
         .map((snapshot) => snapshot.docs.map(Note.fromFirestore).toList());
-  }
-
-  /// One-shot fetch of all notes (used by tests and one-off reads).
-  Future<List<Note>> getNotes() async {
-    final snapshot = await _notesRef
-        .orderBy('createdAt', descending: true)
-        .get();
-    return snapshot.docs.map(Note.fromFirestore).toList();
   }
 
   /// Fetches a single note by id, or `null` if it doesn't exist.

@@ -8,58 +8,99 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:note_here/app/theme/app_theme.dart';
-import 'package:note_here/app/widgets/app_button.dart';
-import 'package:note_here/app/widgets/app_loading_indicator.dart';
-import 'package:note_here/app/widgets/app_text_field.dart';
+import 'package:note_here/app/widgets/confirm_dialog.dart';
+import 'package:note_here/app/widgets/empty_state_view.dart';
 
 void main() {
-  testWidgets('AppButton renders a label and fires onPressed', (
-    WidgetTester tester,
-  ) async {
-    var taps = 0;
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: Scaffold(
-          body: AppButton(label: 'Save', onPressed: () => taps++),
+  group('EmptyStateView', () {
+    testWidgets('renders the no-notes state with the create CTA', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Scaffold(body: EmptyStateView.noNotes(onAction: () {})),
         ),
-      ),
-    );
+      );
 
-    expect(find.text('Save'), findsOneWidget);
-    await tester.tap(find.byType(AppButton));
-    await tester.pump();
-    expect(taps, 1);
+      expect(find.byIcon(Icons.menu_book_outlined), findsOneWidget);
+      expect(find.text('No notes yet'), findsOneWidget);
+    });
+
+    testWidgets('renders the no-results state with a clear-search CTA', (
+      WidgetTester tester,
+    ) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Scaffold(body: EmptyStateView.noResults(onAction: () {})),
+        ),
+      );
+
+      expect(find.byIcon(Icons.search_off_outlined), findsOneWidget);
+      expect(find.text('No matching notes'), findsOneWidget);
+    });
   });
 
-  testWidgets('AppTextField reacts to onChanged', (WidgetTester tester) async {
-    var changes = <String>[];
-
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: Scaffold(
-          body: AppTextField(label: 'Title', onChanged: changes.add),
+  group('showConfirmDialog', () {
+    testWidgets('returns ConfirmResult.stay when cancelled', (
+      WidgetTester tester,
+    ) async {
+      ConfirmResult? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () async {
+                  result = await showConfirmDialog(
+                    context,
+                    title: 'Discard changes?',
+                    message: 'You have unsaved changes.',
+                  );
+                },
+                child: const Text('Open'),
+              ),
+            ),
+          ),
         ),
-      ),
-    );
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Stay'));
+      await tester.pumpAndSettle();
+      expect(result, ConfirmResult.stay);
+    });
 
-    await tester.enterText(find.byType(TextField), 'Hello');
-    expect(changes, <String>['Hello']);
-  });
-
-  testWidgets('AppLoadingIndicator renders the spinner and the message', (
-    WidgetTester tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: AppTheme.light,
-        home: const AppLoadingIndicator(message: 'Loading…'),
-      ),
-    );
-
-    expect(find.byType(CircularProgressIndicator), findsOneWidget);
-    expect(find.text('Loading…'), findsOneWidget);
+    testWidgets('returns ConfirmResult.discard when confirmed', (
+      WidgetTester tester,
+    ) async {
+      ConfirmResult? result;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: AppTheme.light,
+          home: Builder(
+            builder: (context) => Scaffold(
+              body: ElevatedButton(
+                onPressed: () async {
+                  result = await showConfirmDialog(
+                    context,
+                    title: 'Discard changes?',
+                    message: 'You have unsaved changes.',
+                  );
+                },
+                child: const Text('Open'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('Open'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Discard'));
+      await tester.pumpAndSettle();
+      expect(result, ConfirmResult.discard);
+    });
   });
 }

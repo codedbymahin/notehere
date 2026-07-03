@@ -21,13 +21,17 @@ class NoteProvider extends ChangeNotifier {
     _subscribe();
   }
 
+  /// Debounce window applied to search updates. Keeps the typing
+  /// experience smooth while still feeling instantaneous.
+  static const Duration _searchDebounce = Duration(milliseconds: 280);
+
   final FirestoreService _service;
   StreamSubscription<List<Note>>? _subscription;
+  Timer? _searchDebounceTimer;
 
   List<Note> _notes = <Note>[];
   bool _isLoading = true;
   String? _errorMessage;
-  String? _lastActionMessage;
 
   String _searchQuery = '';
   NoteSortOrder _sortOrder = NoteSortOrder.newestFirst;
@@ -65,14 +69,18 @@ class NoteProvider extends ChangeNotifier {
   /// Last error message produced by the provider, if any.
   String? get errorMessage => _errorMessage;
 
-  /// Optional one-shot message emitted after a CRUD action finishes.
-  String? get lastActionMessage => _lastActionMessage;
-
-  /// Updates the active search query. Empty string clears the search.
+  /// Updates the active search query.
+  ///
+  /// The value is committed after a short debounce window so rapid
+  /// keystrokes do not trigger a list rebuild per character. The
+  /// pending update is cancelled if the user keeps typing.
   void setSearchQuery(String value) {
-    if (value == _searchQuery) return;
-    _searchQuery = value;
-    notifyListeners();
+    if (value == _searchQuery && _searchDebounceTimer == null) return;
+    _searchDebounceTimer?.cancel();
+    _searchDebounceTimer = Timer(_searchDebounce, () {
+      _searchQuery = value;
+      notifyListeners();
+    });
   }
 
   /// Updates the active sort order.
@@ -103,7 +111,6 @@ class NoteProvider extends ChangeNotifier {
     try {
       final draft = Note.newDraft(title: title, description: description);
       final created = await _service.createNote(draft);
-      _lastActionMessage = 'Note created.';
       _errorMessage = null;
       return created;
     } catch (error) {
@@ -118,7 +125,6 @@ class NoteProvider extends ChangeNotifier {
     try {
       final stamped = note.copyWith(updatedAt: DateTime.now());
       await _service.updateNote(stamped);
-      _lastActionMessage = 'Note updated.';
       _errorMessage = null;
     } catch (error) {
       _errorMessage = _describe(error);
@@ -130,7 +136,6 @@ class NoteProvider extends ChangeNotifier {
   Future<void> deleteNote(String id) async {
     try {
       await _service.deleteNote(id);
-      _lastActionMessage = 'Note deleted.';
       _errorMessage = null;
     } catch (error) {
       _errorMessage = _describe(error);
@@ -148,19 +153,11 @@ class NoteProvider extends ChangeNotifier {
         description: note.description,
       );
       await _service.createNote(draft);
-      _lastActionMessage = 'Note restored.';
       _errorMessage = null;
     } catch (error) {
       _errorMessage = _describe(error);
       rethrow;
     }
-  }
-
-  /// Clears the optional action message after the UI displays it.
-  void clearLastActionMessage() {
-    if (_lastActionMessage == null) return;
-    _lastActionMessage = null;
-    notifyListeners();
   }
 
   /// Clears the current error after the UI displays it.
@@ -214,6 +211,7 @@ class NoteProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _searchDebounceTimer?.cancel();
     _subscription?.cancel();
     super.dispose();
   }
