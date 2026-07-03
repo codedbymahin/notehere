@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1094319333389",
+    "project_id": "notehere-test",
+    "storage_bucket": "notehere-test.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1094319333389:android:e099ffcd67eb7fbfe07544",
+        "android_client_info": {
+          "package_name": "com.notehere.note_here"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDdhHRT0coPD0WFHFH0Xj3yrbORR8PoPmk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
