@@ -19,19 +19,37 @@ class AddEditNoteScreen extends StatefulWidget {
 }
 
 class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
+  static const int _titleMaxLength = 80;
+  static const int _descriptionMaxLength = 2000;
+
   final _formKey = GlobalKey<FormState>();
   final _titleController = TextEditingController();
   final _descriptionController = TextEditingController();
+  final _titleFocus = FocusNode();
 
   Note? _initialNote;
   bool _isHydrating = false;
+  bool _isSaving = false;
 
   @override
   void initState() {
     super.initState();
-    if (widget.noteId != null && widget.noteId!.isNotEmpty) {
+    _titleController.addListener(_onTextChanged);
+    _descriptionController.addListener(_onTextChanged);
+    if (_isEditing) {
       _hydrateFromProvider();
+    } else {
+      // Auto-focus the title field on create so the keyboard is ready.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _titleFocus.requestFocus();
+      });
     }
+  }
+
+  bool get _isEditing => widget.noteId != null && widget.noteId!.isNotEmpty;
+
+  void _onTextChanged() {
+    if (mounted) setState(() {});
   }
 
   Future<void> _hydrateFromProvider() async {
@@ -45,91 +63,41 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
         _descriptionController.text = note.description;
       }
     } finally {
-      if (mounted) setState(() => _isHydrating = false);
+      if (mounted) {
+        setState(() => _isHydrating = false);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) _titleFocus.requestFocus();
+        });
+      }
     }
   }
 
   @override
   void dispose() {
+    _titleController.removeListener(_onTextChanged);
+    _descriptionController.removeListener(_onTextChanged);
     _titleController.dispose();
     _descriptionController.dispose();
+    _titleFocus.dispose();
     super.dispose();
   }
 
-  bool get _isEditing => widget.noteId != null && widget.noteId!.isNotEmpty;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(_isEditing ? 'Edit note' : 'New note')),
-      body: _isHydrating
-          ? const Center(child: CircularProgressIndicator())
-          : _buildForm(context),
-    );
+  String? _validateTitle(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return 'Please enter a title.';
+    return null;
   }
 
-  Widget _buildForm(BuildContext context) {
-    final theme = Theme.of(context);
-    return SafeArea(
-      child: Form(
-        key: _formKey,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            TextFormField(
-              controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: 'Title',
-                hintText: 'Give your note a title',
-              ),
-              textInputAction: TextInputAction.next,
-              validator: _validateRequired,
-            ),
-            const SizedBox(height: 16),
-            TextFormField(
-              controller: _descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                hintText: 'Write your thoughts…',
-                alignLabelWithHint: true,
-              ),
-              maxLines: 8,
-              minLines: 4,
-              validator: _validateRequired,
-            ),
-            const SizedBox(height: 24),
-            FilledButton.icon(
-              onPressed: _isSaving ? null : _onSave,
-              icon: _isSaving
-                  ? const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.save_outlined),
-              label: Text(_isEditing ? 'Update note' : 'Save note'),
-              style: FilledButton.styleFrom(
-                minimumSize: const Size.fromHeight(48),
-                textStyle: theme.textTheme.titleMedium,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  bool _isSaving = false;
-
-  String? _validateRequired(String? value) {
-    if (value == null || value.trim().isEmpty) {
-      return 'This field is required.';
-    }
+  String? _validateDescription(String? value) {
+    final trimmed = value?.trim() ?? '';
+    if (trimmed.isEmpty) return 'Description cannot be empty.';
     return null;
   }
 
   Future<void> _onSave() async {
+    FocusScope.of(context).unfocus();
     if (!_formKey.currentState!.validate()) return;
+    if (_isSaving) return;
 
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
@@ -159,6 +127,10 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
             provider.lastActionMessage ??
                 (_isEditing ? 'Note updated.' : 'Note created.'),
           ),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       provider.clearLastActionMessage();
@@ -167,12 +139,111 @@ class _AddEditNoteScreenState extends State<AddEditNoteScreen> {
       if (!mounted) return;
       messenger.showSnackBar(
         SnackBar(
-          content: Text(provider.errorMessage ?? 'Could not save note.'),
+          content: Text(provider.errorMessage ?? 'Could not save the note.'),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       );
       provider.clearError();
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    return Scaffold(
+      appBar: AppBar(title: Text(_isEditing ? 'Edit note' : 'New note')),
+      body: _isHydrating
+          ? const Center(child: CircularProgressIndicator())
+          : SafeArea(
+              child: Form(
+                key: _formKey,
+                autovalidateMode: AutovalidateMode.onUserInteraction,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+                  children: [
+                    TextFormField(
+                      controller: _titleController,
+                      focusNode: _titleFocus,
+                      maxLength: _titleMaxLength,
+                      textInputAction: TextInputAction.next,
+                      textCapitalization: TextCapitalization.sentences,
+                      style: theme.textTheme.titleMedium,
+                      decoration: InputDecoration(
+                        labelText: 'Title',
+                        hintText: 'Give your note a title',
+                        alignLabelWithHint: true,
+                        filled: true,
+                        fillColor: colorScheme.surfaceContainerHigh,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      validator: _validateTitle,
+                    ),
+                    const SizedBox(height: 20),
+                    TextFormField(
+                      controller: _descriptionController,
+                      maxLength: _descriptionMaxLength,
+                      maxLines: 10,
+                      minLines: 5,
+                      textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.newline,
+                      keyboardType: TextInputType.multiline,
+                      decoration: InputDecoration(
+                        labelText: 'Description',
+                        hintText: 'Write your thoughts…',
+                        alignLabelWithHint: true,
+                        filled: true,
+                        fillColor: colorScheme.surfaceContainerHigh,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(14),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      validator: _validateDescription,
+                    ),
+                    const SizedBox(height: 32),
+                    FilledButton.icon(
+                      onPressed: _isSaving ? null : _onSave,
+                      icon: _isSaving
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.check),
+                      label: Text(_isEditing ? 'Update note' : 'Save note'),
+                      style: FilledButton.styleFrom(
+                        minimumSize: const Size.fromHeight(56),
+                        textStyle: theme.textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w600,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _isEditing
+                          ? 'Changes are saved instantly to the cloud.'
+                          : 'Your note will be saved instantly to the cloud.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+    );
   }
 }

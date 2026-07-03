@@ -6,11 +6,15 @@ import 'package:flutter/foundation.dart';
 import '../models/note.dart';
 import '../services/firestore_service.dart';
 
+/// Sort order applied on top of the live Firestore list.
+enum NoteSortOrder { newestFirst, oldestFirst }
+
 /// Application-level state for notes.
 ///
 /// Subscribes to the live Firestore stream so the list reflects
 /// additions, edits and deletions in real time, and exposes simple
-/// CRUD methods that screens can invoke.
+/// CRUD methods that screens can invoke. Search and sort are applied
+/// lazily on top of the underlying list — no duplicate storage.
 class NoteProvider extends ChangeNotifier {
   NoteProvider({FirestoreService? service})
     : _service = service ?? FirestoreService() {
@@ -25,8 +29,35 @@ class NoteProvider extends ChangeNotifier {
   String? _errorMessage;
   String? _lastActionMessage;
 
+  String _searchQuery = '';
+  NoteSortOrder _sortOrder = NoteSortOrder.newestFirst;
+
   /// Currently loaded notes (newest first). Returns an unmodifiable view.
   List<Note> get notes => List.unmodifiable(_notes);
+
+  /// Notes filtered by the active search query and reordered by the
+  /// active sort order. Recomputed on every read so the list always
+  /// reflects the latest Firestore snapshot.
+  List<Note> get visibleNotes {
+    final query = _searchQuery.trim().toLowerCase();
+    final filtered = query.isEmpty
+        ? List<Note>.from(_notes)
+        : _notes
+              .where(
+                (note) =>
+                    note.title.toLowerCase().contains(query) ||
+                    note.description.toLowerCase().contains(query),
+              )
+              .toList();
+    filtered.sort((a, b) {
+      final cmp = a.createdAt.compareTo(b.createdAt);
+      return _sortOrder == NoteSortOrder.newestFirst ? -cmp : cmp;
+    });
+    return List.unmodifiable(filtered);
+  }
+
+  String get searchQuery => _searchQuery;
+  NoteSortOrder get sortOrder => _sortOrder;
 
   /// True while the initial Firestore snapshot has not arrived.
   bool get isLoading => _isLoading;
@@ -36,6 +67,20 @@ class NoteProvider extends ChangeNotifier {
 
   /// Optional one-shot message emitted after a CRUD action finishes.
   String? get lastActionMessage => _lastActionMessage;
+
+  /// Updates the active search query. Empty string clears the search.
+  void setSearchQuery(String value) {
+    if (value == _searchQuery) return;
+    _searchQuery = value;
+    notifyListeners();
+  }
+
+  /// Updates the active sort order.
+  void setSortOrder(NoteSortOrder order) {
+    if (order == _sortOrder) return;
+    _sortOrder = order;
+    notifyListeners();
+  }
 
   /// Fetches a single note from the local cache first, then falls back
   /// to a Firestore read so the edit screen always has fresh data.
@@ -71,7 +116,8 @@ class NoteProvider extends ChangeNotifier {
   /// the local cache.
   Future<void> updateNote(Note note) async {
     try {
-      await _service.updateNote(note);
+      final stamped = note.copyWith(updatedAt: DateTime.now());
+      await _service.updateNote(stamped);
       _lastActionMessage = 'Note updated.';
       _errorMessage = null;
     } catch (error) {
@@ -84,7 +130,25 @@ class NoteProvider extends ChangeNotifier {
   Future<void> deleteNote(String id) async {
     try {
       await _service.deleteNote(id);
-      _lastActionMessage = 'Note deleted successfully.';
+      _lastActionMessage = 'Note deleted.';
+      _errorMessage = null;
+    } catch (error) {
+      _errorMessage = _describe(error);
+      rethrow;
+    }
+  }
+
+  /// Re-creates a previously deleted note (used by the Undo Snackbar).
+  /// The original id is intentionally dropped — Firestore will mint a
+  /// new one and the resulting note keeps the same content.
+  Future<void> restoreNote(Note note) async {
+    try {
+      final draft = Note.newDraft(
+        title: note.title,
+        description: note.description,
+      );
+      await _service.createNote(draft);
+      _lastActionMessage = 'Note restored.';
       _errorMessage = null;
     } catch (error) {
       _errorMessage = _describe(error);
@@ -125,9 +189,27 @@ class NoteProvider extends ChangeNotifier {
   /// Translates a thrown error into a user-friendly message.
   static String _describe(Object error) {
     if (error is FirebaseException) {
-      return error.message ?? 'A Firestore error occurred.';
+      switch (error.code) {
+        case 'permission-denied':
+          return 'You do not have permission to do that.';
+        case 'not-found':
+          return 'We could not find that note.';
+        case 'unavailable':
+        case 'network-request-failed':
+          return 'You appear to be offline. Check your connection and try again.';
+        case 'deadline-exceeded':
+          return 'The request took too long. Please try again.';
+        case 'cancelled':
+          return 'The operation was cancelled.';
+        case 'already-exists':
+          return 'This note already exists.';
+      }
+      return error.message ?? 'Something went wrong. Please try again.';
     }
-    return error.toString();
+    if (error is ArgumentError) {
+      return error.message?.toString() ?? 'Invalid input.';
+    }
+    return 'Something went wrong. Please try again.';
   }
 
   @override

@@ -12,37 +12,56 @@
 .swiftpm/
 migrate_working_dir/
 
-# IntelliJ related
+# IntelliJ / Android Studio
 *.iml
 *.ipr
 *.iws
 .idea/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# VS Code — comment out to track per-developer settings
+# .vscode/
 
-# Flutter/Dart/Pub related
+# Flutter / Dart / Pub
 **/doc/api/
 **/ios/Flutter/.last_build_id
+**/macos/Flutter/ephemeral/
+**/flutter_plugins/
+**/flutter_dependencies/
 .dart_tool/
+.flutter-plugins
 .flutter-plugins-dependencies
+.packages
 .pub-cache/
 .pub/
 /build/
 /coverage/
 
-# Symbolication related
+# Symbolication / obfuscation
 app.*.symbols
-
-# Obfuscation related
 app.*.map.json
 
-# Android Studio will place build artifacts here
+# Platform build artifacts
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/.gradle/
+/android/captures/
+/android/local.properties
+/ios/Pods/
+/ios/.symlinks/
+/ios/Flutter/Flutter.framework
+/ios/Flutter/Flutter.podspec
+/ios/Flutter/flutter_export_environment.sh
+/ios/ServiceDefinitions.json
+/ios/Runner.xcworkspace/xcuserdata/
+/macos/Pods/
+/macos/Flutter/Flutter.framework
+/macos/Flutter/Flutter.podspec
+/macos/Runner.xcworkspace/xcuserdata/
+/windows/flutter/ephemeral/
+/windows/runner/CMakeFiles/
+/linux/flutter/ephemeral/
 
-# Puku editor local artifacts (machine-specific)
+# Editor / tooling artefacts
 /.puku/
+/.notehere/

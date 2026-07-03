@@ -1,17 +1,232 @@
-# note_here
+<div align="center">
 
-A new Flutter project.
+# 📝 NoteHere
 
-## Getting Started
+A polished, beginner-friendly Flutter notes app that syncs in real time
+with Cloud Firestore.
 
-This project is a starting point for a Flutter application.
+[![Flutter](https://img.shields.io/badge/Flutter-3.44-02569B?logo=flutter&logoColor=white)](https://flutter.dev)
+[![Dart](https://img.shields.io/badge/Dart-3.12-0175C2?logo=dart&logoColor=white)](https://dart.dev)
+[![License: MIT](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
+[![Platforms](https://img.shields.io/badge/Platforms-Android%20%7C%20iOS%20%7C%20Web%20%7C%20Desktop-lightgrey)](#-supported-platforms)
 
-A few resources to get you started if this is your first Flutter project:
+</div>
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+---
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## ✨ Features
+
+- 📝 **Create, edit, and delete** notes — all wired through real-time Firestore updates.
+- 🔎 **Instant search** across note titles and descriptions (case-insensitive).
+- ↕️ **Sort** notes by newest or oldest first.
+- ↩️ **Undo delete** with a 4-second Snackbar — restore without retyping.
+- 🎨 **Material 3** light + dark theme seeded from indigo.
+- 📱 **Responsive layout** — looks at home on phones, tablets, and desktop browsers.
+- ♿ **Friendly UX** — character counters, autofocus, validation, and a clear empty state.
+- 🛜 **Offline-aware** errors — friendly messages for `permission-denied`, `unavailable`, etc.
+
+---
+
+## 📸 Screenshots
+
+> _Coming soon — capture these with `flutter run -d chrome` (or your favourite device)
+> and drop the images into `docs/screenshots/`._
+
+| Notes list | Edit note | Empty state |
+| :---: | :---: | :---: |
+| _TBD_ | _TBD_ | _TBD_ |
+
+---
+
+## 🚀 Quick start
+
+### Prerequisites
+
+- [Flutter stable channel](https://docs.flutter.dev/get-started/install) (3.44 or newer).
+- A [Firebase](https://console.firebase.google.com/) project with **Cloud Firestore** enabled.
+- (Recommended) The [FlutterFire CLI](https://firebase.flutter.dev/docs/cli) for generating
+  `lib/firebase_options.dart`.
+
+### 1. Clone and install dependencies
+
+```bash
+git clone https://github.com/codedbymahin/notehere.git
+cd notehere
+flutter pub get
+```
+
+### 2. Configure Firebase
+
+```bash
+# Install the FlutterFire CLI once
+dart pub global activate flutterfire_cli
+
+# Generate platform-specific Firebase options
+flutterfire configure
+```
+
+`flutterfire configure` will replace the placeholder values inside
+`lib/firebase_options.dart` with the real keys for your project.
+
+### 3. Allow reads & writes in Firestore (development only)
+
+While you are testing locally, open the Firebase console and paste these rules
+into **Firestore → Rules**:
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /notes/{noteId} {
+      allow read, write: if true;
+    }
+  }
+}
+```
+
+> 🔒 Tighten these rules before you ship anything public — this app has **no
+> authentication** by design.
+
+### 4. Run the app
+
+```bash
+flutter run -d chrome        # web
+flutter run -d <android-id>  # Android
+flutter run -d <ios-id>      # iOS
+```
+
+Or list every connected device with `flutter devices`.
+
+---
+
+## 🛠 Available scripts
+
+| Command                              | What it does                              |
+| ------------------------------------ | ----------------------------------------- |
+| `flutter pub get`                    | Resolve the Dart dependencies.            |
+| `dart format lib/ test/`             | Apply the canonical Dart formatting.      |
+| `flutter analyze`                    | Run the static analyser + lints.          |
+| `flutter test`                       | Run the widget and unit test suite.       |
+| `flutter run -d chrome`              | Launch the app in Chrome (web target).    |
+| `flutter build web --no-tree-shake-icons` | Produce a production web bundle in `build/web`. |
+| `flutter clean`                      | Wipe build artefacts (useful before CI).   |
+
+---
+
+## 🧪 Testing
+
+```bash
+flutter analyze   # static analysis — must pass with no issues
+flutter test      # widget tests for AppButton, AppTextField, AppLoadingIndicator
+```
+
+The widget tests live in [`test/widget_test.dart`](test/widget_test.dart). They
+exercise the shared UI primitives without booting the real Firebase backend,
+so they run fast and are deterministic on CI.
+
+---
+
+## 🗂 Project structure
+
+```
+notehere/
+├── android/                  # Android platform files (auto-generated)
+├── ios/                      # iOS platform files (auto-generated)
+├── web/                      # Web platform files (index.html, manifest, icons)
+├── lib/
+│   ├── main.dart             # App entry point + routing table
+│   ├── firebase_options.dart # Generated by `flutterfire configure`
+│   └── app/
+│       ├── models/           # Plain Dart data classes
+│       ├── providers/        # ChangeNotifier state (NoteProvider)
+│       ├── services/         # Cloud Firestore wrapper
+│       ├── screens/          # Full-screen pages
+│       ├── widgets/          # Reusable widgets
+│       ├── theme/            # Material 3 colour scheme
+│       ├── routes/           # Named-route constants
+│       └── utils/            # Pure helpers (date formatting, etc.)
+├── test/                     # Flutter widget tests
+├── .github/                  # Issue templates
+├── analysis_options.yaml     # Lint configuration
+├── pubspec.yaml              # Package metadata + dependencies
+└── README.md
+```
+
+### Architecture at a glance
+
+```
+   Screens ──▶ NoteProvider (ChangeNotifier) ──▶ FirestoreService ──▶ Cloud Firestore
+                                                  │
+                                                  └─ Stream<List<Note>> (real-time)
+```
+
+- **Screens** are stateless about Firestore — they only read/write through the
+  provider.
+- **`NoteProvider`** subscribes to the live Firestore stream and exposes a
+  derived `visibleNotes` getter that applies the current search query and
+  sort order on demand.
+- **`FirestoreService`** is a thin wrapper over `cloud_firestore` so the
+  persistence layer is easy to swap or mock.
+
+---
+
+## 📦 Tech stack
+
+- [Flutter](https://flutter.dev) 3.44 (stable)
+- [Dart](https://dart.dev) 3.12
+- [Firebase Core](https://pub.dev/packages/firebase_core) + [Cloud Firestore](https://pub.dev/packages/cloud_firestore) for persistence
+- [Provider](https://pub.dev/packages/provider) for app-level state
+- [flutter_lints](https://pub.dev/packages/flutter_lints) for static analysis
+
+---
+
+## 🌐 Supported platforms
+
+- ✅ Android
+- ✅ iOS
+- ✅ Web (Chrome, Edge, Firefox, Safari)
+- ⚠️ Desktop (macOS / Windows / Linux) — the build compiles, but Firebase
+  falls back to the **web** configuration because no native Firebase apps
+  are configured by default. Add a desktop app via `flutterfire configure`
+  to enable native persistence.
+
+---
+
+## 🗺 Roadmap
+
+Ideas that fit the existing architecture (no rewrites required):
+
+- [ ] Bulk actions (select multiple notes + delete)
+- [ ] Categories / tags with a colour picker
+- [ ] Markdown rendering inside the description
+- [ ] Local persistence cache for offline reads
+
+Things deliberately **out of scope** (would require auth + schema changes):
+
+- User accounts and sharing
+- Push notifications
+- Image / file attachments
+- Collaborative editing
+
+---
+
+## 🤝 Contributing
+
+Bug reports and pull requests are welcome! Please read
+[CONTRIBUTING.md](CONTRIBUTING.md) first — it covers the dev setup,
+commit conventions, and code style. For bigger features, open an issue
+first so we can agree on the approach.
+
+---
+
+## 📝 License
+
+This project is released under the [MIT License](LICENSE).
+
+---
+
+## 🙏 Acknowledgements
+
+- Built as an assignment for the NADB Flutter course.
+- Icons courtesy of the [Material Symbols](https://fonts.google.com/icons) set.
+- Layout inspired by Material 3 design guidelines.

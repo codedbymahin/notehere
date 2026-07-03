@@ -5,149 +5,102 @@ import '../models/note.dart';
 import '../providers/note_provider.dart';
 import '../routes/app_routes.dart';
 import '../widgets/app_loading_indicator.dart';
+import '../widgets/empty_state_view.dart';
+import '../widgets/note_card.dart';
 
 /// Main screen: lists every note stored in Firestore and lets the user
-/// create, edit or delete a note.
-class NotesListScreen extends StatelessWidget {
+/// create, edit, delete or search for notes.
+class NotesListScreen extends StatefulWidget {
   const NotesListScreen({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('NoteHere')),
-      body: Consumer<NoteProvider>(
-        builder: (context, provider, _) {
-          if (provider.isLoading) {
-            return const AppLoadingIndicator(message: 'Loading notes…');
-          }
-          if (provider.errorMessage != null && provider.notes.isEmpty) {
-            return _ErrorView(message: provider.errorMessage!);
-          }
-          if (provider.notes.isEmpty) {
-            return const _EmptyView();
-          }
-          return RefreshIndicator(
-            onRefresh: () async {
-              // Real-time listener already keeps the list fresh; this is
-              // here purely so users get the familiar pull-to-refresh cue.
-              await Future<void>.delayed(const Duration(milliseconds: 200));
-            },
-            child: ListView.builder(
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              itemCount: provider.notes.length,
-              itemBuilder: (context, index) {
-                final note = provider.notes[index];
-                return _NoteCard(note: note);
-              },
-            ),
-          );
-        },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.of(context).pushNamed(AppRoutes.addEditNote),
-        tooltip: 'New note',
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
+  State<NotesListScreen> createState() => _NotesListScreenState();
 }
 
-class _NoteCard extends StatelessWidget {
-  const _NoteCard({required this.note});
+class _NotesListScreenState extends State<NotesListScreen> {
+  late final TextEditingController _searchController;
 
-  final Note note;
-
-  static const List<String> _monthNames = <String>[
-    'Jan',
-    'Feb',
-    'Mar',
-    'Apr',
-    'May',
-    'Jun',
-    'Jul',
-    'Aug',
-    'Sep',
-    'Oct',
-    'Nov',
-    'Dec',
-  ];
-
-  String _formatDate(DateTime date) {
-    final local = date.toLocal();
-    final month = _monthNames[local.month - 1];
-    final hour = local.hour.toString().padLeft(2, '0');
-    final minute = local.minute.toString().padLeft(2, '0');
-    return '$month ${local.day}, ${local.year} · $hour:$minute';
+  @override
+  void initState() {
+    super.initState();
+    _searchController = TextEditingController(
+      text: context.read<NoteProvider>().searchQuery,
+    );
+    _searchController.addListener(() {
+      context.read<NoteProvider>().setSearchQuery(_searchController.text);
+    });
   }
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Text(
-                    note.title,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Edit',
-                  icon: const Icon(Icons.edit_outlined),
-                  onPressed: () => Navigator.of(context).pushNamed(
-                    AppRoutes.addEditNote,
-                    arguments: {'id': note.id},
-                  ),
-                ),
-                IconButton(
-                  tooltip: 'Delete',
-                  icon: Icon(Icons.delete_outline, color: colorScheme.error),
-                  onPressed: () => _confirmDelete(context),
-                ),
-              ],
-            ),
-            if (note.description.isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(note.description, style: theme.textTheme.bodyMedium),
-            ],
-            if (note.createdAt.millisecondsSinceEpoch > 0) ...[
-              const SizedBox(height: 8),
-              Text(
-                _formatDate(note.createdAt),
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ],
-          ],
-        ),
+  Future<void> _openEditor(BuildContext context, {String? noteId}) async {
+    await Navigator.of(
+      context,
+    ).pushNamed(AppRoutes.addEditNote, arguments: {'id': noteId});
+  }
+
+  void _showSnackBar(String message) {
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
     );
   }
 
-  Future<void> _confirmDelete(BuildContext context) async {
-    final messenger = ScaffoldMessenger.of(context);
+  Future<void> _deleteNote(BuildContext context, Note note) async {
     final provider = context.read<NoteProvider>();
+    final deletedSnapshot = note.copyWith();
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await provider.deleteNote(note.id);
+      if (!mounted) return;
+      messenger
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          SnackBar(
+            content: const Text('Note deleted'),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+            ),
+            duration: const Duration(seconds: 4),
+            action: SnackBarAction(
+              label: 'Undo',
+              onPressed: () async {
+                try {
+                  await provider.restoreNote(deletedSnapshot);
+                } catch (_) {
+                  _showSnackBar(
+                    provider.errorMessage ?? 'Could not restore the note.',
+                  );
+                  provider.clearError();
+                }
+              },
+            ),
+          ),
+        );
+    } catch (_) {
+      _showSnackBar(provider.errorMessage ?? 'Could not delete the note.');
+      provider.clearError();
+    }
+  }
 
-    final confirmed = await showDialog<bool>(
+  Future<bool> _confirmDelete(Note note) async {
+    final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Delete note?'),
         content: Text(
           'Are you sure you want to delete "${note.title}"? '
-          'This action cannot be undone.',
+          'You can undo this from the snackbar.',
         ),
         actions: [
           TextButton(
@@ -161,49 +114,187 @@ class _NoteCard extends StatelessWidget {
         ],
       ),
     );
-
-    if (confirmed != true) return;
-
-    try {
-      await provider.deleteNote(note.id);
-      messenger.showSnackBar(
-        const SnackBar(content: Text('Note deleted successfully.')),
-      );
-    } catch (_) {
-      messenger.showSnackBar(
-        SnackBar(
-          content: Text(provider.errorMessage ?? 'Could not delete note.'),
-        ),
-      );
-      provider.clearError();
-    }
+    return result == true;
   }
-}
-
-class _EmptyView extends StatelessWidget {
-  const _EmptyView();
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('📝', style: TextStyle(fontSize: 64)),
-            const SizedBox(height: 12),
-            Text('No notes yet.', style: theme.textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text(
-              'Tap the + button to create your first note.',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+
+    return Scaffold(
+      body: SafeArea(
+        child: Consumer<NoteProvider>(
+          builder: (context, provider, _) {
+            return CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverAppBar.large(
+                  centerTitle: false,
+                  pinned: true,
+                  title: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'NoteHere',
+                        style: theme.textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      Text(
+                        'Your private note collection',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ),
+                  actions: [
+                    PopupMenuButton<NoteSortOrder>(
+                      tooltip: 'Sort notes',
+                      icon: const Icon(Icons.sort),
+                      initialValue: provider.sortOrder,
+                      onSelected: provider.setSortOrder,
+                      itemBuilder: (_) => const [
+                        PopupMenuItem(
+                          value: NoteSortOrder.newestFirst,
+                          child: Text('Newest first'),
+                        ),
+                        PopupMenuItem(
+                          value: NoteSortOrder.oldestFirst,
+                          child: Text('Oldest first'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(width: 4),
+                  ],
+                ),
+                if (provider.isLoading)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: AppLoadingIndicator(message: 'Loading notes…'),
+                  )
+                else if (provider.errorMessage != null &&
+                    provider.notes.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _ErrorView(message: provider.errorMessage!),
+                  )
+                else
+                  ..._buildContent(provider, theme),
+                const SliverPadding(padding: EdgeInsets.only(bottom: 96)),
+              ],
+            );
+          },
+        ),
+      ),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _openEditor(context),
+        icon: const Icon(Icons.add),
+        label: const Text('New Note'),
+      ),
+    );
+  }
+
+  List<Widget> _buildContent(NoteProvider provider, ThemeData theme) {
+    final visible = provider.visibleNotes;
+    final hasAnyNotes = provider.notes.isNotEmpty;
+    final isSearching = provider.searchQuery.trim().isNotEmpty;
+
+    if (!hasAnyNotes) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: EmptyStateView(
+            iconData: Icons.notes_outlined,
+            title: 'No notes yet',
+            message: 'Create your first note to get started.',
+            actionLabel: 'Create your first note',
+            onAction: () => _openEditor(context),
+          ),
+        ),
+      ];
+    }
+
+    if (visible.isEmpty && isSearching) {
+      return [
+        SliverToBoxAdapter(child: _SearchField(controller: _searchController)),
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: EmptyStateView(
+            iconData: Icons.search_off,
+            title: 'No matching notes',
+            message: 'No matching notes found.',
+            actionLabel: 'Clear search',
+            onAction: () {
+              _searchController.clear();
+              context.read<NoteProvider>().setSearchQuery('');
+            },
+          ),
+        ),
+      ];
+    }
+
+    return [
+      SliverToBoxAdapter(child: _SearchField(controller: _searchController)),
+      if (visible.isNotEmpty)
+        SliverPadding(
+          padding: const EdgeInsets.only(top: 4),
+          sliver: SliverList.builder(
+            itemCount: visible.length,
+            itemBuilder: (context, index) {
+              final note = visible[index];
+              return AnimatedSwitcher(
+                duration: const Duration(milliseconds: 250),
+                child: NoteCard(
+                  key: ValueKey(note.id),
+                  note: note,
+                  onEdit: () => _openEditor(context, noteId: note.id),
+                  onDelete: () async {
+                    if (await _confirmDelete(note)) {
+                      if (context.mounted) {
+                        await _deleteNote(context, note);
+                      }
+                    }
+                  },
+                ),
+              );
+            },
+          ),
+        ),
+    ];
+  }
+}
+
+class _SearchField extends StatelessWidget {
+  const _SearchField({required this.controller});
+
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: TextField(
+        controller: controller,
+        textInputAction: TextInputAction.search,
+        decoration: InputDecoration(
+          hintText: 'Search notes…',
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: controller.text.isEmpty
+              ? null
+              : IconButton(
+                  icon: const Icon(Icons.close),
+                  tooltip: 'Clear search',
+                  onPressed: () {
+                    controller.clear();
+                    context.read<NoteProvider>().setSearchQuery('');
+                  },
+                ),
+          filled: true,
+          fillColor: theme.colorScheme.surfaceContainerHigh,
+          contentPadding: const EdgeInsets.symmetric(vertical: 0),
         ),
       ),
     );
@@ -217,36 +308,12 @@ class _ErrorView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.error_outline, size: 48, color: theme.colorScheme.error),
-            const SizedBox(height: 12),
-            Text(
-              'Something went wrong',
-              style: theme.textTheme.titleLarge,
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            Text(
-              message,
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 16),
-            FilledButton(
-              onPressed: () => context.read<NoteProvider>().clearError(),
-              child: const Text('Dismiss'),
-            ),
-          ],
-        ),
-      ),
+    return EmptyStateView(
+      iconData: Icons.error_outline,
+      title: 'Something went wrong',
+      message: message,
+      actionLabel: 'Dismiss',
+      onAction: () => context.read<NoteProvider>().clearError(),
     );
   }
 }

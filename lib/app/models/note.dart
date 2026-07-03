@@ -9,49 +9,61 @@ class Note {
   final String title;
   final String description;
   final DateTime createdAt;
+  final DateTime? updatedAt;
 
   const Note({
     required this.id,
     required this.title,
     required this.description,
     required this.createdAt,
+    this.updatedAt,
   });
 
   /// Convenience constructor for creating a brand-new note that has not
-  /// been persisted yet. The id is generated locally; [createdAt] is set
-  /// to the current time.
+  /// been persisted yet. The id is generated locally; [createdAt] and
+  /// [updatedAt] are set to the current time.
   factory Note.newDraft({required String title, required String description}) {
+    final now = DateTime.now();
     return Note(
       id: '',
       title: title,
       description: description,
-      createdAt: DateTime.now(),
+      createdAt: now,
+      updatedAt: now,
     );
   }
 
   /// Returns a copy of this note with the provided fields replaced.
+  /// Passing `clearUpdatedAt: true` removes the timestamp entirely.
   Note copyWith({
     String? id,
     String? title,
     String? description,
     DateTime? createdAt,
+    DateTime? updatedAt,
+    bool clearUpdatedAt = false,
   }) {
     return Note(
       id: id ?? this.id,
       title: title ?? this.title,
       description: description ?? this.description,
       createdAt: createdAt ?? this.createdAt,
+      updatedAt: clearUpdatedAt ? null : (updatedAt ?? this.updatedAt),
     );
   }
 
   /// Creates a [Note] from a Firestore document snapshot.
   factory Note.fromFirestore(DocumentSnapshot<Map<String, dynamic>> doc) {
     final data = doc.data() ?? <String, dynamic>{};
+    final createdAt = _readTimestamp(data['createdAt']);
+    final rawUpdated = data['updatedAt'];
+    final updatedAt = rawUpdated == null ? null : _readTimestamp(rawUpdated);
     return Note(
       id: doc.id,
       title: (data['title'] as String?) ?? '',
       description: (data['description'] as String?) ?? '',
-      createdAt: _readTimestamp(data['createdAt']),
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 
@@ -63,6 +75,7 @@ class Note {
       'title': title,
       'description': description,
       'createdAt': Timestamp.fromDate(createdAt),
+      if (updatedAt != null) 'updatedAt': Timestamp.fromDate(updatedAt!),
     };
   }
 
